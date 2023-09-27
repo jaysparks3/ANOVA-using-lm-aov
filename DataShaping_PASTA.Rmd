@@ -1,0 +1,754 @@
+---
+title: "Finding Meaningful Demographic, Clinical, and Surgical Factors among Patients Treated for Torn Rotator Cuff"
+author: "Jay Kim"
+date: "5/18/2021"
+output: html_document
+---
+
+#Finding Meaningful Demographic, Clinical, and Surgical Factors among Patients Treated for Torn Rotator Cuff
+
+## Descriptive Statistics
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+set.seed(123)
+library(qwraps2)
+options(qwraps2_markup="markdown")
+library(gtsummary); library(gt); library(survival)
+library(dplyr); library(stringr); library(purrr); library(forcats); library(tidyr)
+getwd()
+```
+
+```{r}
+library(readr)
+PASTA_data_clean2 <- read_csv("G:/My Drive/#1_Jay's Space/Andrews_Insititute/PASTA/PASTA_data_clean2.csv", 
+    col_types = cols(`Patient #` = col_factor(levels = c())))
+library(janitor)
+PASTA_Data1 <- clean_names(PASTA_data_clean2) 
+
+```
+
+### Univariate regression table
+
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(datarium)
+
+#SANE 
+PASTA_Data1 %>% 
+  group_by(pass_n_no_y_yes) %>% 
+  get_summary_stats(sane_score_0_100, type="five_number")
+
+#ASES 
+PASTA_Data1 %>% 
+  group_by(pass_n_no_y_yes_3) %>% 
+  get_summary_stats(ases_index_0_100, type="five_number")
+
+
+library(Hmisc)
+ des1 <- describe(PASTA_Data1)
+ des1
+ des2 <- tbl_summary(PASTA_Data1[,-1],
+                     by=pass_total_ases_sane_n_no_y_yes) %>% 
+   add_n() %>% 
+   add_p() %>% 
+   modify_header(label="**Overall Pass**") %>% 
+   bold_labels()
+   #add.significance.stars()
+ 
+ des2
+ 
+```
+
+```{r}
+table(PASTA_Data1$workers_compe_ation_claim, PASTA_Data1$laborer_yes_no)
+table(PASTA_Data1$rheumatoid_arthritis_yes_no, PASTA_Data1$gout_yes_no)
+table(PASTA_Data1$rheumatoid_arthritis_yes_no, PASTA_Data1$shoulder_arthritis_grade_0_4)
+
+```
+
+
+
+
+### boxplot by ASES and SAES score
+
+```{r eval=FALSE, include=FALSE}
+library(dplyr)
+PASTA_Data2 <-  PASTA_Data1 %>% 
+  mutate(shoulder_arthritis = as.factor(shoulder_arthritis_grade_0_4)) %>% 
+  mutate(pass_total  = as.factor(pass_total_ases_sane_n_no_y_yes)) %>% 
+  mutate(saneandases = sane_score_0_100+ases_index_0_100) %>% 
+  select(2:28,40,ases_func_0_30,vas_0_10,pass_n_no_y_yes,pass_n_no_y_yes_3,pass_total,sane_score_0_100,ases_index_0_100,42 )
+
+```
+
+```{r echo=FALSE}
+#following
+library(dplyr)
+library(janitor)
+library(gtsummary)
+#sane_five <- PASTA_Data2 %>% 
+#  group_by(follow_up_years,pass_total) %>% 
+#  get_summary_stats(sane_score_0_100, type="five_number")
+
+#ases_five <- PASTA_Data2 %>% 
+#  group_by(follow_up_years,pass_total) %>% 
+#  get_summary_stats(ases_index_0_100, type="five_number")
+
+library(plotly)
+ fig1 <-  plot_ly() %>% 
+  add_trace(data = PASTA_Data2,
+            y = ~sane_score_0_100,
+            color = ~pass_total,
+            colors = "Dark2",
+            type = "box") %>% 
+  layout(title = "SANE Score by Overall Pass",
+         xaxis = list(title = "Pass"))
+ 
+fig2 <-   plot_ly() %>% 
+  add_trace(data = PASTA_Data2,
+            y = ~ases_index_0_100,
+            color = ~pass_total,
+            colors = "Dark2",
+            type = "box") %>% 
+  layout(title = "ASES Score by Overall Pass",
+         xaxis = list(title = "Pass"))
+
+```
+```{r}
+fig1
+fig2
+ 
+
+
+```
+
+### scatter plot ASES va. SANE by overall PASS
+
+```{r echo=FALSE}
+library(highcharter)
+PASTA_Data2 %>% 
+  hchart(., type="scatter", hcaes( x= ases_index_0_100, y= sane_score_0_100, group = pass_total))
+```
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+
+library(rcompanion)
+# SANE
+CI_y <- as.data.frame.matrix(groupwiseMean(sane_score_0_100 ~ 1, data= PASTA_Data2, conf = 0.95))
+CI_y$vari_name <- "SANE_score"
+CI_y
+#one way
+CI_x1 <- as.data.frame.matrix(groupwiseMean(sane_score_0_100 ~ anxiety_depression_yes_no, data= PASTA_Data2, conf = 0.95))
+CI_x1
+##two way
+CI_x2 <- as.data.frame.matrix(groupwiseMean(sane_score_0_100 ~ anxiety_depression_yes_no + shoulder_arthritis_grade_0_4 , data= PASTA_Data2, conf = 0.95))
+CI_x2
+
+# ASES
+CI_y1 <- as.data.frame.matrix(groupwiseMean(ases_index_0_100 ~ 1, data= PASTA_Data2, conf = 0.95))
+CI_y1$vari_name <- "ASES_score"
+CI_y1
+#one way
+CI_x12 <- as.data.frame.matrix(groupwiseMean(ases_index_0_100 ~ anxiety_depression_yes_no, data= PASTA_Data2, conf = 0.95))
+CI_x12
+##two way
+CI_x22 <- as.data.frame.matrix(groupwiseMean(ases_index_0_100 ~ anxiety_depression_yes_no + shoulder_arthritis_grade_0_4 , data= PASTA_Data2, conf = 0.95))
+CI_x22
+
+
+```
+
+### for skewed data (bootstrapped CI may be more reliable)
+
+```{r}
+groupwiseMean(ases_index_0_100 ~ -1,
+              data   = PASTA_Data2,
+              conf   = 0.95,
+              digits = 3,
+              R      = 10000,
+              boot        = TRUE,
+              traditional = FALSE,
+              normal      = FALSE,
+              basic       = FALSE,
+              percentile  = FALSE,
+              bca         = TRUE)
+
+
+groupwiseMean(sane_score_0_100 ~ -1,
+              data   = PASTA_Data2,
+              conf   = 0.95,
+              digits = 3,
+              R      = 10000,
+              boot        = TRUE,
+              traditional = FALSE,
+              normal      = FALSE,
+              basic       = FALSE,
+              percentile  = FALSE,
+              bca         = TRUE)
+
+```
+### using boot function
+
+```{r}
+library(boot)
+myboot <- boot(PASTA_Data2$saneandases,
+               function(x,i) mean(x[i]),
+               R=10000)
+
+mean(myboot$t[,1]) # mean based on bootstrap
+
+boot.ci(myboot, cof=0.95,
+        type=c("norm","basic","perc","bca"))
+
+#hist
+myboot
+hist(myboot$t[,1], col="darkblue")
+
+```
+
+### Traditional way mean, sd, and CI using long data
+
+```{r}
+library(Rmisc)
+PAST_num <-  PASTA_Data1 %>% 
+  dplyr::select(-shoulder_arthritis_grade_0_4) %>% 
+  select_if(is.numeric) %>% 
+  as.list()
+
+PAST_num_DF <- PAST_num  %>%  as.data.frame()
+long_PAST <- gather(PAST_num_DF, factor_key = T)
+ long_df <- long_PAST %>% 
+   group_by(key) %>% 
+   dplyr::summarise(mean=mean(value, na.rm = T), sd=sd(value,na.rm=T), 
+             n=n(),
+             se=sd/sqrt(n),
+             tscore=qt(1-0.05/2, n-1),
+             zscore=1.645, #alpha=0.05
+             tme=tscore*se,
+             zme=zscore*se,
+             tlower.ci=mean-tme,
+             tupper.ci=mean+tme,
+             zlower.ci=mean-zme,
+             zupper.ci=mean+zme,
+             max=max(value, na.rm=T),min=min(value, na.rm = T)
+   )
+library(DT)
+table1 <- datatable(long_df, extensions = "Buttons",caption = "CI 95%",
+          filter = "top",
+          options = list(dom="Blfrtip",buttons=c("copy","csv","excel","pdf","print"), lengthMenu=list(c(10,25,50,-1), c(10,25,50,"All")),pageLength=25))
+
+table1
+
+```
+
+### NA  Missing data
+
+```{r echo=FALSE}
+library(ggplot2)
+PAST_num1 <- PAST_num %>% as.data.frame();colSums(is.na(PAST_num1))
+fig3 <- ggplot(PAST_num1, aes( x=ases_index_0_100 , y=sane_score_0_100 , color=bmi_body_mass_index )) +
+  geom_point(show.legend = T) +
+  labs( x="ASES", y="SANE", title = "ASE vs. SANE", color="bmi_body_mass_index") +
+  scale_color_gradient(low="green", high ="red", na.value ="blue", guide = "legend") +
+  theme_minimal() + theme(legend.position = "bottom")
+ fig3
+```
+```{r eval=FALSE, include=FALSE}
+library(mice)
+library(VIM)
+set.seed(2222)
+imputeIBM <- mice(PAST_num1,m=3,seed=123)
+imputeIBM$imp$bmi_body_mass_index
+imputeIBM$imp$symptom_duration_months
+
+imp_PASTA <- complete(imputeIBM,1)
+imp_PASTA$total_score <- imp_PASTA$sane_score_0_100+imp_PASTA$ases_index_0_100
+#head(imp_PASTA)
+### imputation for categories
+PAST_ch <- PASTA_Data1 %>% 
+  dplyr::select(is.character) %>% 
+  dplyr::select(-22,-23,-25,-26) %>% 
+  mutate(as.factor)
+set.seed(333)
+imputeall <- mice(PASTA_Data1 ,remove.collinear=FALSE)
+imputeall$imp$dominant_side
+colSums(is.na(PAST_ch))
+colnames(PAST_ch)
+
+```
+
+
+### mean and CI for numeric valus for completed BMI data
+
+```{r}
+
+mean_all <- sapply(imp_PASTA, Rmisc::CI )
+mean_CI <- as.data.frame(t(mean_all))
+mean_CI$variables <- rownames(mean_CI)
+  
+colnames(mean_CI) <-  c("upper.ci","mean","lower.ci","variables")
+head(mean_CI,20)
+sd(imp_PASTA$bmi_body_mass_index)
+
+```
+
+### Does age:end affect outcome scores or inability to meet MCID, SCB, PASS for the SANE or ASES index scores (column AC – AM), please calculate relationship against each individually.	
+
+```{r eval=FALSE, include=FALSE}
+
+ 
+ch_past <- PASTA_Data1 %>% 
+  select(!is.numeric)
+imp_past_data <- cbind(ch_past,imp_PASTA)
+
+imp_past_data1 <- imp_past_data %>% 
+   mutate(tobacco_use=factor(tobacco_use)) %>% 
+   mutate(tobacco_use = ifelse((tobacco_use == "F" | tobacco_use== "Y"), "Y","N"))
+ colnames(imp_past_data1)
+table(tobacco=imp_past_data1$tobacco_use, pass=imp_past_data1$pass_total_ases_sane_n_no_y_yes)
+```
+
+
+### total scores CI by pass
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#write.csv(imp_past_data1, "imp_past_data1.csv")
+library(readr)
+imp_past_data1 <- read_csv("G:/My Drive/#1_Jay's Space/Andrews_Insititute/PASTA/imp_past_data1.csv", 
+    col_types = cols(X1 = col_skip()))
+
+past_pass <- imp_past_data1 %>% 
+  dplyr::group_by(pass_total_ases_sane_n_no_y_yes) %>% 
+  dplyr::summarise(
+    count=n(),
+    percN=count/106*100,
+    mean = mean(total_score),
+    lci = t.test(total_score, conf.level = 0.95)$conf.int[1],
+    uci = t.test(total_score, conf.level = 0.95)$conf.int[2],
+    min=min(total_score),
+    max=max(total_score)
+  )
+
+past_pass
+
+```
+
+
+### Normality test 
+
+```{r}
+shapiro.test(imp_past_data1$ases_index_0_100)
+#hist(imp_past_data1$ases_index_0_100)
+#tran1 <- sqrt(imp_past_data1$ases_index_0_100)
+hist(tran1)
+
+```
+
+
+
+### code data set
+
+```{r include=FALSE}
+filter_data1 <- imp_past_data1 %>% 
+   filter(rheumatoid_arthritis_yes_no=="N") %>% 
+  filter(previous_surgery=="N") %>% 
+  filter(subacromial_decrompression=="Y") %>% 
+  filter(further_surgery_performed=="N") %>% 
+  dplyr::select(-rheumatoid_arthritis_yes_no,-previous_surgery,-subacromial_decrompression, -further_surgery_performed)
+  
+data_past_model <- imp_past_data1 %>% 
+  filter(rheumatoid_arthritis_yes_no=="N") %>% 
+  filter(previous_surgery=="N") %>% 
+  filter(subacromial_decrompression=="Y") %>% 
+  filter(further_surgery_performed=="N") %>% 
+  filter(cr_capsular_release_surgery == "N") %>% 
+  dplyr::select(pass_total_ases_sane_n_no_y_yes,sex,
+         workers_compe_ation_claim, traumatic_history,
+         diabetes, tobacco_use,
+          gout_yes_no,
+         anxiety_depression_yes_no,physical_therapy_yes_no,
+         laborer_yes_no, athlete,
+         steroid_injection, 
+         side_of_surgery_right_left, 
+         dce_distal_clavicle_excision_surgery, labral_repair_surgery,
+         bt_biceps_tenodesis_surgery, 
+         29:40) %>% 
+         na.omit() %>% #104
+     mutate(shoulder_arthritis_grade_0_4=as.factor(shoulder_arthritis_grade_0_4)) %>% 
+     mutate(pass_total=as.factor(pass_total_ases_sane_n_no_y_yes)) %>% 
+  mutate(BMI = ifelse(bmi_body_mass_index<=18.5,"underweight",
+                      ifelse(bmi_body_mass_index<= 24.9, "normal",
+                             ifelse(bmi_body_mass_index<= 29.9 ,"overweight","obesity")))) %>% 
+  dplyr::select(-1)
+
+ 
+```
+
+
+
+```{r}
+#recede for reference
+#write.csv(data_past_model, "data_past_model.csv")
+colnames(data_past_model)
+```
+### liner regression by ASES and SAES scores
+
+```{r}
+#linear regression with all vari
+ 
+summary(regression_1 <- lm(sqrt(sane_score_0_100) ~ ., data= data_past_model[,c(2:22,23,29)]))
+summary(regression_2 <- lm(sqrt(ases_index_0_100) ~ ., data= data_past_model[,c(2:22,26,29)]))
+
+```
+```{r eval=FALSE, include=FALSE}
+addmargins(table(data_past_model$gout_yes_no, data_past_model$pass_total))
+chisq.test(table(data_past_model$BMI, data_past_model$pass_total))
+```
+ 
+```{r eval=FALSE, include=FALSE}
+library(pander)
+odd_past_data <- data_past_mode3 %>% 
+  mutate(gout_yes_no1=ifelse(gout_yes_no=="Y", 1,0)) %>% 
+  group_by(gout_yes_no1, pass_total) %>% 
+  dplyr::summarise(freq =n()) %>% 
+  mutate(all=sum(freq), prob=freq/all, odds=prob/(1-prob), logodds=log(odds)) %>% 
+  round(., 5)
+pander(odd_past_data)
+```
+
+## recode variables
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+colnames(data_past_model)
+library(dplyr)
+data_past_mode2 <- data_past_model %>% 
+   dplyr::select(pass_total,sex,
+         workers_compe_ation_claim, traumatic_history,
+         diabetes, tobacco_use,
+          gout_yes_no,
+         anxiety_depression_yes_no,physical_therapy_yes_no,
+         laborer_yes_no, athlete,
+         steroid_injection, 
+         side_of_surgery_right_left, 
+         dce_distal_clavicle_excision_surgery, labral_repair_surgery,
+         bt_biceps_tenodesis_surgery, 
+         16:21) %>% 
+   mutate(BMI2 = ifelse(bmi_body_mass_index<=24.9,"under24.9","over24.9")) %>% 
+  mutate(sizerotator2=ifelse(size_rotator_cuff_tear_size_percent<70,"size<70", "size>=70")) %>% 
+                            #  ifelse(size_rotator_cuff_tear_size_percent<75,"60<=size<75","size>=75"))) %>% 
+  mutate(SDM2=ifelse(symptom_duration_months<=3,"SDM<=3months",
+                     ifelse(symptom_duration_months<=6,"SDM<=6months","SDM>6months"))) %>% 
+  mutate(AGE2=ifelse(age<40,"AGE<40",
+                     ifelse(age<50,"40<=AGE<50",
+                            ifelse(age<60,"50<=AEG<60","AGE>=60")))) %>% 
+  mutate(FUY=ifelse(follow_up_years<=2,"FUY<=2yrs","FUY>2yrs")) %>% 
+  mutate(shoulder_arthritis_yes_no = ifelse(  (shoulder_arthritis_grade_0_4 == c("0")), "grade0", 
+                                              ifelse(shoulder_arthritis_grade_0_4 ==c("1","2"), "grade1to2","grade3to4"))) %>% 
+  dplyr::select(-bmi_body_mass_index,-size_rotator_cuff_tear_size_percent,-symptom_duration_months,-age,-follow_up_years,-shoulder_arthritis_grade_0_4) 
+
+### reference code
+data_past_mode3 <-   data_past_mode2 %>% 
+ dplyr::mutate(across(where(is.character),  as.factor)) %>% 
+     mutate(gout_yes_no = relevel(gout_yes_no, ref="Y")) %>% #74
+   mutate(sex = relevel(sex, ref="F"),
+          diabetes = relevel(diabetes, ref="Y"),
+          tobacco_use = relevel(tobacco_use, ref="Y"),
+          traumatic_history = relevel(traumatic_history, ref="Y"),
+          workers_compe_ation_claim = relevel(workers_compe_ation_claim, ref="Y"),
+          anxiety_depression_yes_no = relevel(anxiety_depression_yes_no, ref="Y"),
+          physical_therapy_yes_no= relevel(physical_therapy_yes_no, ref="N"),
+          laborer_yes_no = relevel(laborer_yes_no, ref="N"),
+          athlete = relevel(athlete, ref="Y"),
+          steroid_injection=relevel(steroid_injection, ref="N"),
+          side_of_surgery_right_left= relevel(side_of_surgery_right_left, ref="L"),
+          dce_distal_clavicle_excision_surgery=relevel(dce_distal_clavicle_excision_surgery, ref="Y"),
+          labral_repair_surgery = relevel(labral_repair_surgery, ref="Y"),
+          bt_biceps_tenodesis_surgery = relevel(bt_biceps_tenodesis_surgery, ref="Y"),
+          #C = relevel(cr_capsular_release_surgery, ref="Y"),
+          shoulder_arthritis_yes_no = relevel(shoulder_arthritis_yes_no, ref="grade0"),
+          BMI2 = relevel(BMI2, ref="under24.9"),
+          sizerotator2 = relevel(sizerotator2, ref="size<70"),
+          SDM2= relevel(SDM2, ref="SDM>6months"),
+          AGE2 = relevel(AGE2, ref="AGE>=60"),
+          FUY = relevel(FUY, ref="FUY>2yrs")
+          )   
+
+set.seed(12344)
+summary(modela <- glm(pass_total ~ ., family = "binomial", data = data_past_mode3))
+
+
+exp(cbind(OR= coef(modela), confint(modela)))
+library(sjPlot)
+tab_test <- tab_model(modela, CSS = css_theme("cells"))
+tab_test
+library(flextable)
+gt_r1 <- glm(pass_total~., data_past_mode3, family = binomial) %>%
+  tbl_regression(exponentiate = TRUE) 
+muytable1 <- gt_r1 %>% as_flex_table()
+
+colnames(data_past_mode3)
+stats::chisq.test(table(data_past_mode3$sizerotator2, data_past_mode3$pass_total))
+```
+ 
+```{r eval=FALSE, include=FALSE}
+#colnames(filter_data1)
+summary(regression_a <- glm( factor(pass_n_no_y_yes) ~ ., family = "binomial", data= filter_data1[,c(2:18,26:31,21)]))
+summary(regression_b <- glm( factor(pass_n_no_y_yes_3) ~ ., family = "binomial",data= filter_data1[,c(2:18,26:31,24)]))
+
+
+```
+
+
+### logistic regression - releveling factors(reparameterizing model)
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+
+set.seed(222)
+summary(modelb <- glm(pass_total ~ gout_yes_no*shoulder_arthritis_grade_0_4, family = "binomial", data = data_past_mode3))
+set.seed(333)
+summary(modelc <- glm(pass_total ~ sex*athlete*AGE2*traumatic_history, family = "binomial", data = data_past_mode3))
+set.seed(444)
+summary(modeld <- glm(pass_total ~ AGE2+ labral_repair_surgery+gout_yes_no + BMI2 + shoulder_arthritis_grade_0_4, family = "binomial", data = data_past_mode3))
+set.seed(555)
+summary(modele <- glm(pass_total ~ SDM2+AGE2+ BMI2 + shoulder_arthritis_grade_0_4+gout_yes_no+labral_repair_surgery, family = "binomial", data = data_past_mode3))
+
+model_ser <- c("modela","modelb","modelc","modeld","modele")
+AIC <- c(100.86,103.11,102.33,92.82,90.423)
+## estimate for intercept: the log odds of a all factors are zero values
+#coefficient for numerical factor==1.511e+00 which is interpreted as the expected change in log odds for a one-unit increase in numerical factor
+#estimate means +estimationg increase mean outcome values
+# chategory A and B: expect mean outcome to be estimate +- than reference level
+#table(pass=data_past_mode3$pass_total, gout=data_past_mode3$gout_yes_no)
+```
+### CI and OR
+```{r}
+exp(cbind(OR= coef(modela), confint(modela)))
+library(sjPlot)
+tab_test <- tab_model(modela, CSS = css_theme("cells"))
+tab_test
+
+
+```
+
+
+
+
+
+###anova model
+```{r}
+anova(modela, modeld, test = "Chisq")
+
+```
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+ 
+set.seed(12344)
+summary(modela <- glm(total_pass ~ ., family = "binomial", data = model_data[,c(1:19,31)]))
+ modela <- glm(total_pass ~ ., family = "binomial", data = model_data[,c(1:21,33)])
+
+
+exp(cbind(OR= coef(modela), confint(modela)))
+library(sjPlot)
+tab_test <- tab_model(modela, CSS = css_theme("cells"))
+
+
+
+
+
+library(logistf)
+logistf_r1 <- logistf(data = model_data[,c(1:21,33)], total_pass~.,  firth = TRUE, pl=TRUE)
+logistf_r2 <- logistf(data = model_data[,c(1:21,33)], total_pass~.,  firth = TRUE, pl=TRUE) %>%
+  tbl_regression(exponentiate = TRUE)  %>% 
+  modify_header(list(label ~ "**Variables**")) %>% 
+  as_flex_table()
+
+logistf_r2
+muytable1
+
+summary(logistf_r1)
+logistf_r1$table_body
+exp(coef(logistf_r1))
+logistf_r1$conv
+```
+ 
+
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+gt_asesF <- lm(ases_func_score~., model_data[1:22]) %>%
+  tbl_regression() 
+
+gt_vas <- lm(vas_score~., model_data[,c(1:21,23)]) %>%
+  tbl_regression( )
+
+gt_asesindex <- lm(ases_index~., model_data[,c(1:21,24)] ) %>%
+  tbl_regression()
+  
+gt_asespass <-  glm(ases_pass~., model_data[,c(1:21,27)], family = binomial) %>%
+  tbl_regression(exponentiate = TRUE)
+
+gt_t1 <- model_data %>% 
+  tbl_summary(missing = "no") %>% 
+  add_n() %>%
+  modify_header(stat_0 ~ "**n (%)**") %>%
+  modify_footnote(stat_0 ~ NA_character_)
+
+theme_gtsummary_compact()
+#> Setting theme `Compact`
+ases_all_table <- tbl_merge(
+  list(gt_t1,gt_asesF, gt_vas ),
+  tab_spanner = c(NA_character_, "**ASES Function Score(lm)**","**VAS Score(lm)**")
+) %>%  as_flex_table()
+
+
+
+ases_all_table34 <-   tbl_merge(
+  list(gt_t1, gt_asesindex, gt_asespass),
+  tab_spanner = c(NA_character_,"**ASES Index(lm)**",
+                  "**ASES Pass(glm)**")
+) %>%  as_flex_table()
+
+
+ases_all_table
+ases_all_table34
+
+```
+
+
+### estimate
+
+```{r}
+output1 <- tidy(modela)
+r1 <- datatable(output1, extensions = "Buttons",caption = "Results Table 1",
+          filter = "top",
+          options = list(dom="Blfrtip",buttons=c("copy","csv","excel","pdf","print"), lengthMenu=list(c(10,25,50,-1), c(10,25,50,"All")),pageLength=25))
+r1
+
+
+
+```
+
+### coefficient and CI
+
+```{r}
+library(MASS)
+mycoef <- as.data.frame(coef(modela)) %>% 
+  mutate(exp_coef=exp(coef(modela))) 
+
+# for every one age increase in surgery, the odds of the passing increase by a factor of 1.001461+00
+# exp(coef)=values means we expect to see about (1-exp(value))% increase in the odds of being passing 
+### confidence intervals
+
+ 
+
+conf1 <- confint(modela)
+r2 <- datatable(conf1, extensions = "Buttons",caption = "CI Table 1",
+          filter = "top",
+          options = list(dom="Blfrtip",buttons=c("copy","csv","excel","pdf","print"), lengthMenu=list(c(10,25,50,-1), c(10,25,50,"All")),pageLength=25))
+r2
+
+```
+
+
+###predicted
+
+```{r}
+data_past_mode3$pred <- predict(modela,type="resp")
+as.data.frame(data_past_mode3[1:10,])
+```
+
+
+
+
+
+### vari imp
+```{r}
+
+imp_vari <- (caret::varImp(modela)) 
+imp_vari 
+
+
+```
+
+### prediction
+```{r}
+
+data_past_mode3$code_pred <-  ifelse(data_past_mode3$pred > 0.5, 1,0)
+tab1 <- table(Predicted = data_past_mode3$code_pred, Actual = data_past_mode3$pass_total)
+tab1
+### error
+1-sum(diag(tab1))/sum(tab1)
+```
+### goodness of fit test and plot ROCR
+
+```{r}
+hist(modela$fitted.values)
+fitvalue <- modela$fitted.values
+with(modela, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = F))
+
+library(ROCR)
+
+rocr_pred <- prediction(data_past_mode3$pred, data_past_mode3$pass_total)
+rocr_perf <- performance(rocr_pred, "tpr", "fpr")
+
+plot(rocr_perf, colorize= TRUE, print.cutoffs.at=seq(0.1, by=0.1))
+
+```
+### prediction #2
+
+```{r}
+data_past_mode3$code_pred2 <-  ifelse(data_past_mode3$pred > 0.60, 1,0)
+tab2 <- table(Predicted = data_past_mode3$code_pred2, Actual = data_past_mode3$pass_total)
+tab2
+### error
+1-sum(diag(tab2))/sum(tab2)
+```
+
+
+
+
+
+
+### plot for gender
+
+```{r}
+data_past_model %>% 
+  mutate(prob = ifelse(pass_total == "Y", 1, 0)) %>% 
+  ggplot(aes(x=sex, prob)) +
+  geom_point(alpha = 0.15) +
+  geom_smooth(method = "glm", method.args = list(family = "binomial")) +
+  ggtitle("Logistic regression Fit") +
+  xlab("gender") +
+  ylab("Probability of Pass")
+```
+
+### plot for residuals (+-3sd)
+
+```{r}
+library(modelr)
+model1_data <- augment(modela) %>% 
+  dplyr::mutate(index = 1:n())
+
+ggplot(model1_data, aes(index, .std.resid, color = pass_total)) + 
+  geom_point(alpha = .9) +
+  geom_ref_line(h = 3)
+
+
+
+
+
+```
+

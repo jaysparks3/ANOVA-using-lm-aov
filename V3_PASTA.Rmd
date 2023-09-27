@@ -1,0 +1,310 @@
+---
+title: Finding Meaningful Demographic, Clinical, and Surgical Factors among Patients
+  Treated for Torn Rotator Cuff
+subtitle: Who will pass the ASES and SANE tests?
+author: "Jay Kim"
+date: "5/28/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+setwd("G:/My Drive/#1_Jay's Space/Andrews_Insititute/PASTA")
+knitr::opts_chunk$set(include = TRUE)
+set.seed(123)
+library(qwraps2)
+library(gtsummary); library(gt); library(survival)
+library(dplyr); library(stringr); library(purrr); library(forcats); library(tidyr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(datarium)
+library(readr)
+library(flextable)
+```
+
+```{r include=FALSE}
+
+ 
+library(readr)
+imp_past_data1 <- read_csv("G:/My Drive/#1_Jay's Space/Andrews_Insititute/PASTA/imp_past_data1.csv", 
+    col_types = cols(X1 = col_skip())) %>% 
+  dplyr::rename(
+    sane_micd = reached_mcid_n_no_y_yes,
+    sane_scb = scb_n_no_y_yes,
+    sane_index = sane_score_0_100,
+    sane_pass = pass_n_no_y_yes,
+    ases_micd = mcid_n_no_y_yes,
+    ases_scb = scb_n_no_y_yes_2,
+    vas_score = vas_0_10,
+    ases_func_score =ases_func_0_30,
+    ases_index = ases_index_0_100,
+    ases_pass = pass_n_no_y_yes_3,
+    total_index = total_score,
+    total_pass = pass_total_ases_sane_n_no_y_yes
+  ) %>% 
+  dplyr::select(1,2:22,30:40,23:29) %>% 
+  dplyr::select(1:28, contains("ases_func"), contains("vas"),contains("ases"),contains("sane_index"), contains("sane_micd"),contains("sane_scb"),contains("sane_pass"), contains("total")) %>% 
+  mutate(sane_index=as.numeric(sane_index)) %>% 
+  mutate(shoulder_arthritis_grade_0_4 = ifelse(shoulder_arthritis_grade_0_4>=3, "Grade:3to4",
+                                               ifelse(shoulder_arthritis_grade_0_4>=1, "Grade:1to2","Grade:0"))) %>% 
+  mutate(shoulder_arthritis_grade_0_4 =as.factor(shoulder_arthritis_grade_0_4)) %>% 
+  filter(age>40) %>% 
+  select(-subacromial_decrompression)
+
+
+# summary_data <- imp_past_data1[,c(-1,-38)] %>%  tbl_summary(
+#   statistic = all_continuous() ~ "{mean} ({sd}) {min} {max}",
+# 
+#   ) %>%  add_n() %>%  bold_labels()
+# 
+
+#qplot(x=size_rotator_cuff_tear_size_percent, y=total_pass,data=imp_past_data1)
+
+### recode
+ 
+
+ imp_past_data2 <- imp_past_data1 %>%
+  mutate(age = cut(age,breaks = c(0, 55,65,76), right = TRUE, labels = c("(40,55]","(55,65]", "Over 65"))) %>% 
+  mutate(follow_up_years = cut(follow_up_years,breaks = c(0,2,5,10,14.1), right = TRUE, labels = c("(1,2]","(2,5]","(5,10]","Over 10"))) %>% 
+  mutate(bmi_body_mass_index = cut(bmi_body_mass_index,breaks = c(0,24.9, 29.9, 46.0), right = TRUE,labels = c("Normal","Overweight","Obesity"))) %>%   mutate(symptom_duration_months = cut(symptom_duration_months,breaks = c(0,  3, 6, 396), right = TRUE, labels = c("(0,3]","(3,6]","Over 6"))) %>% 
+  mutate(size_rotator_cuff_tear_size_percent = cut(size_rotator_cuff_tear_size_percent,breaks = c(0,55, 70, 95), right = TRUE, labels = c("Small:(25,55]","Medium:(55,70]","Large:Over 70"))) 
+ 
+
+
+
+# total pass exact test  
+# testdata <- imp_past_data2 %>%  select( 2:27,39,-1) 
+# asso_totalpass <-  testdata %>% tbl_summary(
+#   by=total_pass,
+#   missing = "no"
+# ) %>% 
+#   add_overall() %>% 
+#   add_p() %>% 
+#   add_n() %>% 
+#   bold_p() 
+# 
+# 
+# summary_raw_tab <- summary_tab <-  imp_past_data2[,c(-1,-38)] %>% tbl_summary(
+#   statistic =list(
+# all_continuous() ~ "{mean} ({sd})",
+# all_dichotomous() ~ "{p}%"
+# ),
+# missing = "no") %>% bold_labels() %>%  add_n()
+# 
+# summary_data <- imp_past_data1[,c(-1,-38)] %>%  tbl_summary( 
+#   statistic = all_continuous() ~ "{mean} ({sd}) {min} {max}",
+#   
+#   ) %>%  add_n() %>%  bold_labels() 
+# 
+# 
+
+
+
+   
+testdata1 <- imp_past_data2 %>%  select( 2:27,39,-1)   # omit NA:subacromial_decrompression
+uvr_test <- testdata1 %>% mutate(total_pass = ifelse(total_pass =="Y", 1,0)) %>% 
+tbl_uvregression(
+    method = glm,
+    y = total_pass,
+    method.args = list(family = binomial),
+    exponentiate = TRUE,
+    add_estimate_to_reference_rows = TRUE 
+  ) %>% bold_p() %>% 
+  add_nevent()
+
+#####################
+## code for data ###
+######################
+
+### firths and glm data
+firthdata <- imp_past_data2 %>%  
+  filter(further_surgery_performed !="Y" |
+           dominant_side == "Y" |
+           rheumatoid_arthritis_yes_no == "N" |
+           previous_surgery == "N" |
+           gout_yes_no =="N" ) %>% 
+  select(-further_surgery_performed,
+         -dominant_side,
+         -rheumatoid_arthritis_yes_no,
+         -previous_surgery, -gout_yes_no )
+write.csv(firthdata, "firthdata_06_15_21.csv")
+
+### summary table
+colnames(firthdata) <-  c("patient_number", "SEX", "Worker's compe.action.claim",  "Traumatic history",    "Diabetes", "Tobacco use",    "Anxiety depression",   "Physical therapy",  "Laborer" ,  "Athlete" ,    "Steroid injection",      "Side of surgery " ,     "distal clavicle excision", "Labral repair",    "Biceps tenodesis" ,  "Capsular release" ,        
+       "AGE",                "Follow-up(years)",      "BMI" ,  "Symptom duration(month)" ,             "Shoulder arthritis" ,        "Rotator cuff tear size(%)" ,
+       "ases_func_score",                      "vas_score",                           
+  "ases_index" ,                          "ases_micd"   ,                         "ases_scb" ,                            "ases_pass"  ,                         
+  "sane_index",                           "sane_micd","sane_scb"  ,                           "sane_pass" ,                          
+ "total_index" ,                         "total_pass")
+
+write.csv(firthdata, "V2_firthdata06_16_21.csv")
+
+
+
+### description data
+
+ 
+sampledta_test <- firthdata %>% # mutate(total_pass = ifelse(total_pass =="Y", 1,0)) %>% 
+  select(-1,-total_index) %>% 
+tbl_summary(
+  by=total_pass,
+   statistic = all_continuous() ~ "{mean} ({sd}) {min} {max}",
+   missing = "no"
+   )  %>% add_n()
+ 
+
+
+# Firth
+ testFirthdata_totalpass <- firthdata[, c(2:22,34)] %>% mutate(total_pass = ifelse(total_pass =="Y", 1,0)) 
+ testFirth_totalpass  <- logistf::logistf(total_pass ~., data = testFirthdata_totalpass, firth= TRUE, pl=TRUE) %>% 
+   tbl_regression( 
+     exponentiate =TRUE,
+     pvalue_fun = ~style_pvalue(.x, digits = 2),
+     add_estimate_to_reference_rows = TRUE,
+     intercept=FALSE
+     ) %>%  
+   bold_p() 
+ 
+ testFirthdata_ases_pass <- firthdata[, c(2:22,28)] %>% mutate(ases_pass = ifelse(ases_pass =="Y", 1,0)) 
+ testFirth_ases_test  <- logistf::logistf(ases_pass ~., data = testFirthdata_ases_pass, firth= TRUE, pl=TRUE) %>% 
+   tbl_regression( 
+     exponentiate =TRUE,
+     pvalue_fun = ~style_pvalue(.x, digits = 2),
+     add_estimate_to_reference_rows = TRUE,
+     intercept=FALSE
+     ) %>%  
+   bold_p() 
+ 
+  testFirthdata_sane_pass <- firthdata[, c(2:22,32)] %>% mutate(sane_pass = ifelse(sane_pass =="Y", 1,0)) 
+ testFirth_sane_pass  <- logistf::logistf(sane_pass ~., data = testFirthdata_sane_pass, firth= TRUE, pl=TRUE) %>% 
+   tbl_regression( 
+     exponentiate =TRUE,
+     pvalue_fun = ~style_pvalue(.x, digits = 2),
+     add_estimate_to_reference_rows = TRUE,
+     intercept=FALSE
+     ) %>%  
+   bold_p() 
+  
+ 
+ 
+ ### final glm total pass
+ 
+ glm_total_pass <- firthdata[, c(2:22,34)] %>% mutate(total_pass = ifelse(total_pass =="Y", 1,0))   
+   totalpass  <-  glm(total_pass ~., data =glm_total_pass, family = binomial) %>% 
+   tbl_regression(
+     exponentiate =TRUE,
+     pvalue_fun = ~style_pvalue(.x, digits = 2),
+     add_estimate_to_reference_rows = TRUE 
+                  ) %>% bold_p()  
+   
+ glm_total_pass_glm <- firthdata[, c(2:22,34)] %>% mutate(total_pass = ifelse(total_pass =="Y", 1,0))   
+ glm_test <-    glm_total_pass_glm %>% 
+  tbl_uvregression(
+    method = glm,
+    y = total_pass,
+    method.args = list(family = binomial),
+    exponentiate = TRUE,
+    add_estimate_to_reference_rows = TRUE 
+  ) %>% bold_p()  
+
+  # test_sane_data <-  firthdata[, c(2:22,32)]   %>% mutate(sane_pass = ifelse(sane_pass =="Y", 1,0)) 
+  # tbl_summary(data= test_sane_data, by=sane_pass)
+  # addmargins(table(test_sane_data$sane_pass))
+  # sane_table <-  glm(factor(sane_pass) ~., data =test_sane_data, family = binomial) %>% 
+  #  tbl_regression(
+  #    exponentiate =TRUE,
+  #    pvalue_fun = ~style_pvalue(.x, digits = 2),
+  #    add_estimate_to_reference_rows = TRUE 
+  #                 ) %>% bold_p()
+  # 
+  # 
+  #   test_ases_pass <-  firthdata[, c(2:22,28)]   %>% mutate(ases_pass = ifelse(ases_pass =="Y", 1,0))   
+  # ases_table <-  glm(factor(ases_pass) ~., data =test_ases_pass, family = binomial) %>% 
+  #  tbl_regression(
+  #    exponentiate =TRUE,
+  #    pvalue_fun = ~style_pvalue(.x, digits = 2),
+  #    add_estimate_to_reference_rows = TRUE 
+  #                 ) %>% bold_p()
+  
+  
+# tables for lm
+ 
+ases_func_score <-  lm(ases_func_score ~., data = firthdata[, c(2:22,23)])  %>% 
+   tbl_regression() %>% bold_p()
+ 
+vas_score <-  lm(vas_score ~., data = firthdata[, c(2:22,24)])  %>% 
+   tbl_regression() %>% bold_p()
+  
+ases_index <-  lm(ases_index ~., data = firthdata[, c(2:22,25)])  %>% 
+   tbl_regression() %>% bold_p()
+   
+sane_index <-  lm(sane_index ~., data = firthdata[, c(2:22,29)])  %>% 
+   tbl_regression() %>% bold_p()
+    
+total_index <-  lm(total_index ~., data = firthdata[, c(2:22,33)])  %>% 
+   tbl_regression() %>% bold_p()
+ 
+
+```
+
+
+### Descriptive data  
+
+```{r echo=FALSE}
+sampledta_test
+```
+
+
+
+###  GLM vs. Frith's methods for Total Pass
+
+```{r}
+
+tab_com <- tbl_merge(list( totalpass, testFirth_totalpass),
+                  tab_spanner = c( "**Logistic regression**" , "**Firth's ml**")) %>% 
+  modify_table_body( ~.x %>%  arrange(row_type == "glance_statistic"))
+
+tab_com
+```
+
+
+
+ 
+### Firth's ml
+ 
+```{r echo=FALSE}
+
+table_2 <- tbl_merge(list( testFirth_totalpass, testFirth_ases_test ,testFirth_sane_pass  ),
+                      tab_spanner = c(  "**Total Pass(Firth's ml)**", "**ASES Pass(Firth's ml)**", "**SANE Pass(Firth's ml)**"  )) %>% 
+  modify_table_body(~.x %>% arrange(row_type == "glance_statistic"))
+
+table_2
+ 
+
+```
+
+
+### Continuous Outcomes
+
+```{r echo=FALSE, warning=FALSE}
+
+ table_1 <- tbl_merge(list(ases_func_score, vas_score, ases_index, sane_index  ),
+                      tab_spanner = c("**Function**","**VAS**","**ASES**", "**SANE**" )) %>% 
+  modify_table_body(~.x %>% arrange(row_type == "glance_statistic"))
+
+ table_1
+ 
+```
+ 
+
+
+
+
+ 
+
+
+
+
+
+
+

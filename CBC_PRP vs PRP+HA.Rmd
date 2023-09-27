@@ -1,0 +1,211 @@
+---
+title: 'CBC: PRP vs.PRP+HA'
+author: "Jay Kim"
+date: "6/18/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+
+library(qwraps2)
+library(gtsummary); library(gt); library(survival)
+library(dplyr); library(stringr); library(purrr); library(forcats); library(tidyr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(datarium)
+library(readr)
+library(flextable)
+library(readr)
+library(knitr)
+```
+
+
+```{r}
+library(readr)
+PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_ <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P3_sm AREF_Anz ACPvsACP+HA/PRPVsPRPHA_DATA_LABELS_2021-05-05_1431 .csv")
+PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_$Group <- factor(PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_$Group, levels = c("PRP","PRP +HA"), labels = c("PRP", "PRP+HA"))
+
+PRPVsPRPHACBCData_DATA_2021_05_05_1432 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P3_sm AREF_Anz ACPvsACP+HA/PRPVsPRPHACBCData_DATA_2021-05-05_1432.csv")
+PRPVsPRPHACBCData_DATA_LABELS_2021_05_05_1432 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P3_sm AREF_Anz ACPvsACP+HA/PRPVsPRPHACBCData_DATA_LABELS_2021-05-05_1432.csv")
+
+ACP_label_data <- PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_
+# group id
+group_id <- PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_  %>% 
+  select(record_id= "Record ID", Group ) %>%  unique() %>% na.omit()
+
+
+
+```
+
+### AEG
+
+```{r}
+age_summary <- ACP_label_data %>% 
+  group_by(Group) %>% 
+  dplyr::summarise(meanAGE=mean(Age, na.rm=T), sdAGE=sd(Age, na.rm=T),minAge=min(Age), maxAge=max(Age), count=n())
+age_summary
+```
+
+
+
+```{r echo=FALSE}
+### blood work and id
+
+blood_id <- merge(PRPVsPRPHACBCData_DATA_2021_05_05_1432, group_id, by="record_id", all.x = T)
+
+
+redcap_event_name <-  c("injection_1_arm_1", "injection_2_arm_1", "injection_3_arm_1")
+injection_name_num <- (1:3)
+injection_df <- data.frame(redcap_event_name, injection_name_num)
+
+injection_id <- merge(injection_df, blood_id, by="redcap_event_name", all.y = T) %>% arrange(record_id,injection_name_num ) %>% 
+  group_by(record_id) %>% 
+  mutate(total_injection = max(injection_name_num))
+ 
+
+unique_injection_id <- injection_id %>% 
+  select(record_id,Group, total_injection) %>%  unique()
+
+addmargins(table(Group=unique_injection_id$Group, Total_injection=unique_injection_id$total_injection)) 
+```
+
+### Mean, SD for blood Work by CBC-group for each injection time
+
+```{r message=FALSE, warning=FALSE}
+
+cbc_data <- injection_id %>% filter(total_injection == 3) %>%   select(3,1,31,30,6:10) %>% 
+ mutate(n_injection = stringr::str_extract(redcap_event_name,"^.{11}") ) %>%  mutate(group_id = Group) 
+
+# cbc_zero_counts <- cbc_data %>% 
+#   group_by(group_id, n_injection) %>% 
+#     filter_at(vars(wbc,rbc,hgb,hct,plt), any_vars(. ==0)) 
+# zero_counts <- knitr::kable(cbc_zero_counts, "Numer of Zero values for each Cols")  
+#   
+
+# glimpse(cbc_data)
+summary_data  <- cbc_data %>% select(11,10,5:9) %>%  as.data.frame()
+cbc_summary_tab <- summary_data[, -1] %>%  tbl_summary(
+  by=group_id,
+  #missing = "no",
+  statistic = list(all_continuous() ~ "{mean} ({sd}) {min} {max}"),
+  missing_text =  "(missing)"
+)
+# cbc_summary_tab
+
+
+# zeros
+# Count_zeros <- colSums( cbc_data ==0, na.rm = T) %>%  as.data.frame()
+# knitr::kable(Count_zeros, caption = "number of zeros for each cols")
+zero_df <- cbc_data %>%   
+  mutate(is.zero.wbc = ifelse(wbc==0.0, "is.zero","not.zero")) %>% 
+  mutate(is.zero.rbc = ifelse(rbc==0.0, "is.zero","not.zero")) %>% 
+  mutate(is.zero.hgb = ifelse(hgb==0.0, "is.zero","not.zero")) %>% 
+  mutate(is.zero.hct = ifelse(hct==0.0, "is.zero","not.zero")) %>% 
+  mutate(is.zero.plt = ifelse(plt==0.0, "is.zero","not.zero"))
+
+zero_wbc <- zero_df %>% 
+  group_by(Group,n_injection,is.zero.wbc ) %>% 
+  dplyr::summarise( Count=n())
+
+zero_wbc <- kable(zero_wbc, caption = "Number of zero by group and injection for WBC")
+zero_wbc
+
+### rbc
+zero_rbc <- zero_df %>% 
+  group_by(Group,n_injection,is.zero.rbc ) %>% 
+  dplyr::summarise( Count=n())
+ 
+zero_rbc <- kable(zero_rbc, caption = "Number of zero by group and injection for RBC")
+zero_rbc
+
+### hgb
+zero_hgb <- zero_df %>% 
+  group_by(Group,n_injection,is.zero.hgb ) %>% 
+  dplyr::summarise( Count=n())
+ 
+zero_hgb <- kable(zero_hgb, caption = "Number of zero by group and injection for HGB")
+ 
+
+###hct
+zero_hct <- zero_df %>% 
+  group_by(Group,n_injection,is.zero.hct) %>% 
+  dplyr::summarise( Count=n())
+ 
+zero_hct<- kable(zero_hct, caption = "Number of zero by group and injection for HCT")
+ 
+
+###plt
+zero_plt <- zero_df %>% 
+  group_by(Group,n_injection,is.zero.plt) %>% 
+  dplyr::summarise( Count=n())
+ 
+zero_plt<- kable(zero_plt, caption = "Number of zero by group and injection for PLT")
+zero_plt
+
+```
+
+### Mean(SD), and coutns for each boold test (removed NA and zeros)
+
+```{r}
+
+
+cbc_vari_mean <- cbc_data %>% 
+  group_by(Group, n_injection) %>% 
+  mutate_all(funs(ifelse(. == 0.0, NA, .))) %>% 
+  dplyr::summarise(meanWBC= mean(wbc, na.rm=T),SDWBC=sd(wbc, na.rm=T),  
+                   meanRBC= mean(rbc, na.rm=T),SDRBC=sd(rbc, na.rm=T), 
+                  #meanHGB= mean(hgb, na.rm=T),SDHGB=sd(hgb, na.rm=T),
+                  # meanHCT= mean(hct, na.rm=T),SDHCT=sd(hct, na.rm=T),
+                   meanPLT= mean(plt, na.rm=T),SDPLT=sd(plt, na.rm=T), 
+                    .groups="drop")  %>% 
+  mutate_at(3:8, funs(round(., 2)))
+
+CBCtab1 <- knitr::kable(cbc_vari_mean, caption = "Average for each cols (removed Nas and zeros)")
+
+CBCtab1
+```
+
+
+### Plots for average each CBC vlaues by group
+
+```{r}
+
+ggplot(data=cbc_vari_mean, aes(x= n_injection, y=meanWBC ,fill= Group, color=Group, group= Group)) +
+  geom_line(size=1.1) + geom_text( aes(label= round(meanWBC,2)), vjust=2) +
+  labs( title = "Average WBC by Group",
+        x= "Injection Time")
+
+ggplot(data=cbc_vari_mean, aes(x= n_injection, y=meanRBC ,fill= Group, color=Group, group= Group)) +
+  geom_line(size=1.1) + geom_text( aes(label= round(meanRBC,2)), vjust=2) +
+  labs( title = "Average RBC by Group",
+        x= "Injection Time") +
+  ylim(0.00, 0.08)
+
+
+# ggplot(data=cbc_vari_mean, aes(x= n_injection, y=meanHGB ,fill= Group, color=Group, group= Group)) +
+#   geom_line(size=1.1) + geom_text( aes(label= round(meanHGB,2)), vjust=2, hjust=2) +
+#   labs( title = "Average HGB by Group",
+#         x= "Injection Time")
+# 
+# 
+# ggplot(data=cbc_vari_mean, aes(x= n_injection, y=meanHCT ,fill= Group, color=Group, group= Group)) +
+#   geom_line(size=1.1) + geom_text( aes(label= round(meanHCT,2)), vjust=2) +
+#   labs( title = "Average HCT by Group",
+#         x= "Injection Time")
+
+
+ggplot(data=cbc_vari_mean, aes(x= n_injection, y=meanPLT ,fill= Group, color=Group, group= Group)) +
+  geom_line(size=1.1) + geom_text( aes(label= round(meanPLT,2)), vjust=2) +
+  labs( title = "Average PLT by Group",
+        x= "Injection Time")
+
+
+```

@@ -1,0 +1,82 @@
+---
+title: "Impact of Clinical and Demographic Factors on Time-to-Recovery from Insertional Achilles Tendinosis Using All-Suture Bone Anchors"
+subtilte:
+author: "Jay Kim"
+date: "5/19/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(qwraps2)
+options(qwraps2_markup="markdown")
+library(gtsummary); library(gt); library(survival)
+library(dplyr); library(stringr); library(purrr)
+library(forcats); library(tidyr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(datarium)
+library(readr)
+library(flextable)
+library(janitor)
+```
+
+### import data and raw data summary
+
+```{r}
+library(readxl)
+Data_Collection_Sheet <- read_excel("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P2_AREF_Murawski QFix Study/Data Collection Sheet.xlsx", 
+    sheet = "Sheet1", col_names = F) 
+
+colnames(Data_Collection_Sheet) <- Data_Collection_Sheet[2,]
+
+cleandata <- clean_names(Data_Collection_Sheet[c(-1,-2),]) %>% 
+  select(1,6,7,9:13,2:5,8,14)  %>% as.data.frame()
+
+
+cols_ch <- colnames(cleandata[, c(1:8)])
+
+cleandata2 <- cleandata %>%  mutate_at(cols_ch, funs(factor(.))) %>% 
+  mutate_if(is.character, as.numeric)
+ 
+
+summary_iat <- cleandata2 %>% 
+  tbl_summary() %>% bold_labels()
+
+summary_iat
+
+```
+
+### Add variables (code)
+
+```{r}
+#write.csv(cleandata3,"cleandata3.csv")
+cleandata3 <- tibble(cleandata2) %>%  add_column(logdays = log(cleandata2$time_to_regular_shoe_in_days), BMI1 = round(cleandata2$weight_lbs*703/ cleandata2$height_in^2, digits = 3))
+shapiro.test(cleandata3$logdays)
+cleandata3
+
+```
+
+### data summary
+
+```{r}
+library(skimr)
+skim(cleandata3)
+```
+### plot
+
+```{r}
+library(ggplot2)
+myplot <- ggplot(data= cleandata3) +
+  geom_point(aes( x= bmi, y= age, color= gender, size=time_to_regular_shoe_in_days, alpha= 0.7))+
+  scale_alpha_identity()+
+  scale_size_continuous()+
+  facet_wrap( vars(number_of_anchors_used))
+
+
+myplot  
+
+```
+

@@ -1,0 +1,516 @@
+---
+title: "ACP_treatment options"
+author: "Jay Kim"
+date: "5/19/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+
+)
+library(qwraps2)
+library(gtsummary); library(gt); library(survival)
+library(dplyr); library(stringr); library(purrr); library(forcats); library(tidyr)
+library(tidyverse)
+library(ggpubr)
+library(rstatix)
+library(datarium)
+library(readr)
+library(flextable)
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+### import data
+library(janitor)
+library(readr)
+PRPVsPRPHA_DATA_2021_05_05_1430 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P3_sm AREF_Anz ACPvsACP+HA/PRPVsPRPHA_DATA_2021-05-05_1430.csv")
+
+  
+PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_ <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P3_sm AREF_Anz ACPvsACP+HA/PRPVsPRPHA_DATA_LABELS_2021-05-05_1431 .csv")
+PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_$Group <- factor(PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_$Group, levels = c("PRP","PRP +HA"), labels = c("PRP", "PRP+HA"))
+
+
+ACP_data <- PRPVsPRPHA_DATA_2021_05_05_1430 
+ACP_label_data <- PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_ 
+ 
+PRPVsPRPHACBCData_DATA_2021_05_05_1432 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P3_sm AREF_Anz ACPvsACP+HA/PRPVsPRPHACBCData_DATA_2021-05-05_1432.csv")
+PRPVsPRPHACBCData_DATA_LABELS_2021_05_05_1432 <- read_csv("G:/Shared drives/HMCSE-PAM Lab/Andrews Institute Projects/P3_sm AREF_Anz ACPvsACP+HA/PRPVsPRPHACBCData_DATA_LABELS_2021-05-05_1432.csv")
+ACP_CBC_data <- PRPVsPRPHACBCData_DATA_2021_05_05_1432
+ACP_CBC_label_data <- PRPVsPRPHACBCData_DATA_LABELS_2021_05_05_1432
+
+
+# ACP_data
+# ACP_label_data
+# 
+# ACP_CBC_data
+# ACP_CBC_label_data 
+# 
+# unique(PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_$Group)
+```
+
+ 
+
+### Event Time by group
+
+
+```{r echo=FALSE}
+### recode
+library(stringr)
+recode_PRP_data <- PRPVsPRPHA_DATA_2021_05_05_1430 %>% 
+  select(record_id, redcap_event_name) %>%
+  mutate(event_name = stringr::str_extract(redcap_event_name, "^.{8}") ) %>%  
+  mutate(event_name =str_replace_all(event_name, c( "_p"), "")) %>%
+  mutate(event_name =str_replace_all(event_name, c( "_"), "")) %>%
+ #mutate(kks_date = as.Date(kks_date, "%m/%d/%Y")) %>% 
+  group_by(record_id) %>% 
+  unique()
+
+# event id
+event_name <-  c("baseline", "1month",   "3months",  "6months",  "12months", "18months", "24months")
+event_id_num <-  (1:7)
+event_df <- data.frame(event_name, event_id_num)
+
+recode_PRP_data_id <- merge(recode_PRP_data, event_df, by="event_name", all.x = T) %>%  arrange(record_id, event_id_num) %>% 
+  mutate(event_name = ordered(event_name, level=c("baseline", "1month","3months","6months","12months","18months","24months"))) 
+
+# group id
+group_id <- PRPVsPRPHA_DATA_LABELS_2021_05_05_1431_  %>% 
+  select(record_id= "Record ID", Group ) %>%  unique() %>% na.omit()
+ 
+recode_PRP_data_id2 <- merge(recode_PRP_data_id, group_id, by="record_id", all.x=T)
+
+recode_PRP_data_id2 <- recode_PRP_data_id2 %>%  select(1,5,3,2,4)
+
+ addmargins(table(Group=recode_PRP_data_id2$Group, Event_time=recode_PRP_data_id2$event_name))
+ 
+ 
+
+```
+
+### Injection Numbers by Group
+ 
+```{r echo=FALSE}
+### blood work and id
+
+blood_id <- merge(PRPVsPRPHACBCData_DATA_2021_05_05_1432, group_id, by="record_id", all.x = T)
+
+
+redcap_event_name <-  c("injection_1_arm_1", "injection_2_arm_1", "injection_3_arm_1")
+injection_name_num <- (1:3)
+injection_df <- data.frame(redcap_event_name, injection_name_num)
+
+injection_id <- merge(injection_df, blood_id, by="redcap_event_name", all.y = T) %>% arrange(record_id,injection_name_num ) %>% 
+  group_by(record_id) %>% 
+  mutate(total_injection = max(injection_name_num))
+ 
+
+unique_injection_id <- injection_id %>% 
+  select(record_id,Group, total_injection) %>%  unique()
+
+addmargins(table(Group=unique_injection_id$Group, Total_injection=unique_injection_id$total_injection)) 
+```
+
+```{r}
+####  DATA with CBC data
+blood_data1 <- injection_id %>% select(record_id,Group,total_injection) %>% unique()
+
+
+```
+
+
+
+
+### IKDC score module 
+
+```{r echo=FALSE}
+#import data ACP_data and ACP_label_data
+ikdc_module_num <- ACP_data   %>% filter(ikdc_subjective_knee_evaluation_form_complete == 2) %>% select(1,2,78:96) # completed cases
+ikdc_module_label <- ACP_label_data %>% janitor::clean_names() %>% filter(complete_2 == "Complete")%>% select(78:96)  
+
+ikdc_modeul <- cbind(ikdc_module_num,ikdc_module_label) %>%  as.tibble() %>%  na.omit() 
+
+ikdc_modeul2 <-ikdc_modeul %>%  dplyr::mutate( ikdc_sum = rowSums(ikdc_modeul[, c(3:19,21)], na.rm=T)) # not included "function_prior_to_your_knee_injury"
+#write.csv(ikdc_modeul2, "ikdc_overall_06_15_21.csv")
+#colnames(ikdc_modeul2) 
+skimr::skim(ikdc_module_num)
+```
+
+**Table: average IKDC score by group**
+
+```{r echo=FALSE}
+ ## merge with group name
+ikdc_vari_data <- merge(recode_PRP_data_id2,ikdc_modeul2, by=c("record_id","redcap_event_name"), all.y = T ) 
+#unique(ikdc_vari_data$event_name)
+# average ikdc score table
+ ikdc_vari <- ikdc_vari_data  %>%  arrange( event_name) %>%
+  group_by(event_name,Group ) %>% filter(ikdc_sum != 0)  %>%  # remove na
+  dplyr::summarise(ikdc_mean=mean(ikdc_sum), SD=sd(ikdc_sum), Min=min(ikdc_sum), Max=max(ikdc_sum),Count=n())  
+ 
+knitr::kable(ikdc_vari, caption = "Average IKDC Score by Group")
+
+# CBC data
+
+ikdc_vari_cbc_group <- merge(blood_data1 , ikdc_vari_data, by=c("record_id","Group"), all.y=T )
+
+ikdc_v2 <- ikdc_vari_cbc_group %>% filter( total_injection==3) %>% 
+ arrange( event_name) %>%
+  group_by(event_name,Group ) %>% filter(ikdc_sum != 0)  %>%  # remove na
+  dplyr::summarise(ikdc_mean=mean(ikdc_sum), SD=sd(ikdc_sum), Min=min(ikdc_sum), Max=max(ikdc_sum),Count=n()) 
+
+knitr::kable(ikdc_v2,  caption="Average IKDC Score by CBC-Group")
+```
+
+**Plot: average IKDC score by group**
+
+```{r ikdc, figures-side, fig.show="hold", out.width="50%"}
+ par(mar = c(4,4,.1,.1))
+# ikdc plot
+plot_ikdc <- ikdc_vari %>%  ggplot( aes(x= event_name, y= ikdc_mean, color=Group, group=Group)) + 
+   geom_line( size=1) + geom_point()+
+  geom_text(aes(label = round(ikdc_mean, 2)),
+            vjust = 2, hjust = -0.5,
+            show.legend = TRUE) +
+  labs(title = "Average IKDC Score over time by Group",
+      # caption = "1=Baseline, 2=Month 1, 3=Month 3, 4= Month 6, 5=Month 12, 6=Month 18, 7=Month 24",
+    x ="Event Time",
+  y = "Average IKDC Score") +
+  theme(legend.position = "top") +
+  ylim(31,52)
+
+plot_ikdc
+
+
+pot_ikdc_v2 <- ikdc_v2 %>% 
+  ggplot( aes(x= event_name, y= ikdc_mean, color=Group, group= Group)) + 
+   geom_line(size=1) + geom_point()+
+  geom_text(aes(label = round(ikdc_mean, 2)),
+            vjust = 2, hjust = -0.5,
+            show.legend = TRUE) +
+  labs(title = "Average IKDC Score over time by CBC-Group",
+       #caption = "1=Baseline, 2=Month 1, 3=Month 3, 4= Month 6, 5=Month 12, 6=Month 18, 7=Month 24",
+    x ="Event Time",
+  y = "Average IKDC Score") +
+    theme(legend.position = "top") +
+   ylim(31,52)
+
+
+pot_ikdc_v2
+
+```
+
+
+### kks score module 
+
+```{r echo=FALSE}
+
+#import data ACP_data and ACP_label_data
+kks_module_num <- ACP_data %>%  filter(koos_knee_survey_complete == 2) %>%  select(1,2,6:47)   
+kks_module_label <- ACP_label_data %>% janitor::clean_names() %>% filter(complete =="Complete")  %>% select(6:47)  
+kks_modeul <- cbind(kks_module_num,kks_module_label) %>% as.tibble() %>% na.omit()
+ 
+kks_modeul2 <- kks_modeul %>% 
+   dplyr::mutate( kks_sum = rowSums(kks_modeul[, c(3:44)], na.rm=T)) 
+#write.csv(kks_modeul, "kks_overall_06_15_21.csv")
+#colnames(kks_modeul2)
+skimr::skim(kks_module_num)
+
+```
+
+**Table: average KOOS score by group**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#summary
+kks_vari_data <- merge(recode_PRP_data_id2, kks_modeul2[,c(1:2,87)], by=c("record_id","redcap_event_name"), all.y = T )
+
+kks_vari <- kks_vari_data %>% arrange(record_id, event_name) %>%
+  group_by(event_name,Group ) %>% filter(kks_sum != 0)  %>%  # remove na
+  dplyr::summarise(kks_mean=mean(kks_sum), SD=sd(kks_sum), Min=min(kks_sum), Max=max(kks_sum),Count=n())  
+
+knitr::kable(kks_vari, caption = "AVerag KOOS Score by Group")
+
+# data with CBC
+
+kks_vari_cbc_group <- merge(blood_data1 , kks_vari_data, by=c("record_id","Group"), all.y=T )
+
+ kks_v2 <- kks_vari_cbc_group %>% filter( total_injection==3) %>% 
+ arrange( event_name) %>%
+  group_by(event_name,Group ) %>% filter(kks_sum != 0)  %>%  # remove na
+  dplyr::summarise(kks_mean=mean(kks_sum), SD=sd(kks_sum), Min=min(kks_sum), Max=max(kks_sum),Count=n()) 
+
+knitr::kable(kks_v2,  caption="Average KOOS Score by CBC-Group")
+
+```
+
+**Plot: average KOOS score by group**
+
+```{r echo=FALSE}
+# plot
+ 
+plot_kks <- kks_vari%>% ggplot( aes(x= event_name, y= kks_mean, color=Group, group=Group)) + 
+   geom_line( size=1) + geom_point()+
+  geom_text(aes(label = round(kks_mean, 2)),
+            vjust = 2, hjust = "inward",
+            show.legend = TRUE) +
+  labs(title = "Average KOOS Score over time by Group",
+     x ="Event Time",
+  y = "Average KOOS Score") +
+  theme(legend.position = "top") +
+   ylim(42,85)
+
+plot_kks
+
+pot_kks_v2 <- kks_v2  %>% 
+  ggplot( aes(x= event_name, y= kks_mean, color=Group, group= Group)) + 
+   geom_line(size=1) + geom_point()+
+  geom_text(aes(label = round(kks_mean, 2)),
+            vjust = 2, hjust = "inward",
+            show.legend = TRUE) +
+  labs(title = "Average KOOOS Score over time by CBC-Group",
+       #caption = "1=Baseline, 2=Month 1, 3=Month 3, 4= Month 6, 5=Month 12, 6=Month 18, 7=Month 24",
+    x ="Event Time",
+  y = "Average KOOS Score") +
+    theme(legend.position = "top") +
+  ylim(42,85)
+
+
+pot_kks_v2
+
+```
+
+
+
+### womac scoe module
+
+```{r echo=FALSE}
+
+#import data ACP_data and ACP_label_data
+womac_module_num <- ACP_data %>% filter(womac_osteoarthritis_index_complete == 2)  %>%  select(1,2,50:75)   
+womac_module_label <- ACP_label_data %>% janitor::clean_names() %>% filter(complete_1 =="Complete") %>%  select(50:75)  
+womac_modeul <- cbind(womac_module_num,womac_module_label) %>%  na.omit()
+womac_modeul2 <- womac_modeul %>% 
+     dplyr::mutate( womac_sum = rowSums(womac_modeul[, c(3:28)], na.rm=T))
+#write.csv(womac_modeul2, "womac_overall_06_15_21.csv")
+#colnames(womac_modeul2) 
+skimr::skim(womac_module_num)
+```
+
+**Table: average WOMAC score by group**
+
+```{r echo=FALSE}
+
+#summary
+womac_vari_data <- merge(recode_PRP_data_id2, womac_modeul2[,c(1:2,55)], by=c("record_id","redcap_event_name"), all.y = T )
+
+
+womac_vari <- womac_vari_data  %>% arrange(record_id, event_name) %>%
+  group_by(event_name,Group ) %>% filter(womac_sum != 0)  %>%  # remove na
+  dplyr::summarise(womac_mean=mean(womac_sum), SD=sd(womac_sum), Min=min(womac_sum), Max=max(womac_sum),Count=n())  
+
+
+knitr::kable(womac_vari, caption  ="Average WOMAC Score by Group")
+
+
+# data with CBC
+
+womac_vari_cbc_group <- merge(blood_data1 ,womac_vari_data, by=c("record_id","Group"), all.y=T )
+
+ womac_v2 <- womac_vari_cbc_group %>% filter( total_injection==3) %>% 
+ arrange( event_name) %>%
+  group_by(event_name,Group ) %>% filter(womac_sum != 0)  %>%  # remove na
+  dplyr::summarise(womac_mean=mean(womac_sum), SD=sd(womac_sum), Min=min(womac_sum), Max=max(womac_sum),Count=n()) 
+
+knitr::kable(womac_v2,  caption="Average WOMAC Score by CBC-Group")
+
+
+```
+
+**Plot: average WOMAC score by group**
+
+```{r echo=FALSE}
+
+# plot
+
+plot_womac <- womac_vari %>% ggplot( aes(x= event_name, y= womac_mean, color=Group, group=Group)) + 
+   geom_line( size=1) + geom_point()+
+  geom_text(aes(label = round(womac_mean, 2)),
+            vjust = 2, hjust = "inward",
+            show.legend = TRUE) +
+  labs(title = "Average WOMAC Score over time by Group",
+     x ="Event Time",
+  y = "Average WOMAC Score") +
+  theme( legend.position = "top" ) +
+  ylim(20,44)
+
+plot_womac
+
+
+plot_womac_v2 <- womac_v2  %>% ggplot( aes(x= event_name, y= womac_mean, color=Group, group=Group)) + 
+   geom_line( size=1) + geom_point()+
+  geom_text(aes(label = round(womac_mean, 2)),
+            vjust = 2, hjust = 0.5,
+            show.legend = TRUE) +
+  labs(title = "Average WOMAC Score over time by Group",
+     x ="Event Time",
+  y = "Average WOMAC Score") +
+  theme( legend.position = "top" ) +
+  ylim(20,44)
+
+plot_womac_v2
+```
+
+
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r eval=FALSE, include=FALSE}
+# 
+# 
+# 
+# <!-- ### Summary statistics -->
+#  
+# <!-- library(tidyverse) -->
+# <!-- library(ggpubr) -->
+# <!-- library(rstatix) -->
+# <!-- library(datarium) -->
+# <!-- head(ACP_data) -->
+# 
+# <!-- ID_group <-  ACP_data %>%  -->
+# <!--   select(record_id, group) %>%   -->
+# <!--   filter(!is.na(group)) %>%  -->
+# <!--   unique()  -->
+# 
+# 
+# 
+# <!-- ACP_data_sim <- ACP_data[ , c(1:96, 104)] %>%  -->
+# <!--   select(-3,-4,-5) %>%  -->
+# <!--   #group_by(record_id,redcap_event_name) %>% -->
+# <!--   mutate(record_id=as.factor(record_id),group = as.factor(group), record_id=as.factor(record_id)) %>%  -->
+# <!--   select(-contains("complete"), -contains("timestamp"), -group)  %>%  -->
+# <!--   group_by(record_id) %>%  -->
+# <!--   mutate(Time_index=row_number())  -->
+# 
+# <!-- total_score <- as.data.frame.matrix(ACP_data_sim[ , c(3:89)]) %>%  -->
+# <!--   apply(. , 1, sum, na.rm=T)  -->
+# 
+# <!-- glimpse(total_score) -->
+# 
+# <!-- ACP_data_sum <- cbind.data.frame(ACP_data_sim, total_score) -->
+# <!-- glimpse(ACP_data_sum) -->
+# 
+# <!-- ACP_data_sum_group <- merge(ACP_data_sum, ID_group, by="record_id", all.x = T)  -->
+# <!-- ACP_data_sum_group$Time_index1 <- factor(ACP_data_sum_group$Time_index, levels = c(1,2,3,4,5,6,7), labels = c("baseline", "1_month", -->
+# <!--                                                                                                              "3_months","6_months", -->
+# <!--                                                                                                              "12_months", -->
+# <!--                                                                                                              "18_months","24_months")) -->
+# <!-- ACP_data_sum_group$group <- factor(ACP_data_sum_group$group, levels = c(1,2), labels = c("ACP", "ACP+HA")) -->
+# 
+# 
+# 
+# <!-- head(ACP_data_sum_group,20) -->
+# 
+# <!-- ACP_summary <- ACP_data_sum_group %>%  -->
+# <!--   group_by(group, Time_index1) %>%  -->
+# <!--   arrange(Time_index1) %>%  -->
+# <!--   #dplyr::summarise(meantotalscore = mean(total_score, na.rm = T)) -->
+# <!--   get_summary_stats(total_score, type = "mean_sd") -->
+# <!-- ACP_summary -->
+# 
+# 
+# 
+# 
+# 
+# <!-- ``` -->
+# 
+# <!-- ### boxplot -->
+# 
+# <!-- ```{r} -->
+# 
+# <!-- boxplot1 <- ggboxplot( ACP_data_sum_group[ACP_data_sum_group$Time_index<=5,], -->
+# <!--                        x= "Time_index", -->
+# <!--                        y ="total_score", -->
+# <!--                        color = "group", -->
+# <!--                        palette = "jco") -->
+# 
+# <!-- boxplot1 -->
+# <!-- ``` -->
+# <!-- ### normality -->
+# 
+# <!-- ```{r} -->
+# 
+# 
+# <!-- ACP_data_sum_group %>%  -->
+# <!--   group_by(group, Time_index) %>%  -->
+# <!--   shapiro_test(total_score) -->
+# 
+# 
+# 
+# 
+# 
+# <!-- ``` -->
+# 
+# <!-- ### qqplot -->
+# 
+# <!-- ```{r} -->
+# 
+# <!-- ggqqplot( ACP_data_sum_group, "total_score", ggthem = theme_bw())+ -->
+# <!--   facet_grid(group ~ Time_index, labeller = "label_both") -->
+# 
+# 
+# <!-- ``` -->
+# <!-- ### NAs -->
+# 
+# <!-- ```{r} -->
+# <!-- ACP_data_one_year <- ACP_data_sum_group %>%  -->
+# <!--   filter(Time_index<= 5) -->
+# <!-- colSums(is.na(ACP_data_one_year)) -->
+# 
+# 
+# 
+# <!-- ``` -->
+
+```
